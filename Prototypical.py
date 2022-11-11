@@ -1,8 +1,8 @@
 """
-An implementation of the "Siamese Neural Networks for One-shot Image Recognition" in PyTorch, 
+An implementation of the "Prototypical Networks for Few-shot Learning" in PyTorch, 
 trained and tested on bearing fault diagnosis probelm.
 
-Data: 2022/11/08
+Data: 2022/11/
 Author: Xiaohan Chen
 Email: cxh_bb@outlook.com
 """
@@ -17,8 +17,11 @@ from Utils.logger import setlogger
 from tqdm import *
 
 from PrepareData.CWRU import CWRUloader
-from SiameseNets import CNN1D
-from Datasets import SiameseData
+from PrototypicalNets import CNN1D
+from Datasets import PrototypicalData
+from Sampler import BatchSampler
+from Loss.PrototypicalLoss import prototypical_loss as loss_fn
+
 import Utils.utilis as utils
 
 # ===== Define argments =====
@@ -52,16 +55,16 @@ def parse_args():
     parser.add_argument("--pretrained", type=bool, default=False, help="whether use pre-trained model in transfer learning tasks")
 
 
-    # training set
-    parser.add_argument("--support", type=int, default=200, help="the number of training samples per class")
-    # test set
-    parser.add_argument("--querry", type=int, default=100, help="the number of test samples per class")
-    parser.add_argument("--shots", type=int, default=1, help="the number of test samples per class in querry set")
+    parser.add_argument("--n_train", type=int, default=200, help="The number of training data per class")
+    parser.add_argument("--n_val", type=int, default=30, help="the number of validation data per class")
+    parser.add_argument("--n_test", type=int, default=50, help="the number of test data per class")
+    parser.add_argument("--support", type=int, default=5, help="the number of support set per class")
+    parser.add_argument("--query", type=int, default=15, help="the number of query set per class")
+    parser.add_argument("--episodes", type=int, default=80, help="the number of episodes per epoch")
 
     # optimization & training
     parser.add_argument("--num_workers", type=int, default=0, help="the number of dataloader workers")
-    parser.add_argument("--batch_size", type=int, default=256)
-    parser.add_argument("--max_epoch", type=int, default=400)
+    parser.add_argument("--max_epoch", type=int, default=300)
     parser.add_argument("--lr", type=float, default=1e-3, help="learning rate")
     parser.add_argument('--lr_scheduler', type=str, default='stepLR', choices=['step', 'exp', 'stepLR', 'fix'], help='the learning rate schedule')
     parser.add_argument("--optimizer", type=str, default="adam", choices=["adam", "sgd"])
@@ -74,23 +77,32 @@ def parse_args():
 # ===== Load Data =====
 def loaddata(args):
     if args.source_dataname == "CWRU":
-        source_data = CWRUloader(args, args.s_load, args.s_label_set, args.support)
+        source_data = CWRUloader(args, args.s_load, args.s_label_set, args.n_train)
     
     if args.target_dataname == "CWRU":
-        target_data = CWRUloader(args, args.t_load, args.t_label_set, args.querry)
+        target_data = CWRUloader(args, args.t_load, args.t_label_set, args.n_val+args.n_test)
+    val_data = {key:target_data[key][:args.n_val] for key in target_data.keys()}
+    test_data = {key:target_data[key][-args.n_test:] for key in target_data.keys()}
 
     print("Data size of training sample per class: ", source_data[0].shape)
-    print("Data size of test sample per class: ", target_data[0].shape)
+    print("Data size of validation sample per class: ", val_data[0].shape)
+    print("Data size of test sampler per class: ", test_data[0].shape)
 
-    source_data = SiameseData.SiameseTrain(source_data)
-    target_data = SiameseData.SiameseTest(target_data)
+    source_data = PrototypicalData.ProtitypicalData(source_data)
+    val_data = PrototypicalData.ProtitypicalData(val_data)
+    test_data = PrototypicalData.ProtitypicalData(test_data)
 
-    train_loader = DataLoader(source_data, batch_size=args.batch_size, shuffle=False)
-    test_loader = DataLoader(target_data, batch_size=len(args.t_label_set), shuffle=False)
+    source_sampler = BatchSampler.BatchSampler(source_data.y, args.support, args.query, args.episodes)
+    val_sampler = BatchSampler.BatchSampler(val_data.y, args.support, args.query, args.episodes)
+    test_sampler = BatchSampler.BatchSampler(test_data.y, args.support, args.query, episodes=args.episodes)
+
+    source_loader = DataLoader(source_data, batch_sampler=source_sampler)
+    val_loader = DataLoader(val_data, batch_sampler=val_sampler)
+    test_loader = DataLoader(test_data, batch_sampler=test_sampler)
 
     print("========== Loading dataset down! ==========")
     
-    return train_loader, test_loader
+    return source_loader, val_loader, test_loader
 
 # ===== Evaluate the model =====
 def Test(Net, dataloader):
@@ -128,51 +140,40 @@ def Train(args):
         logging.info('using {} cpu'.format(device_count))
     
     # load datasets
-    train_loader, test_loader = loaddata(args)
+    source_loader, val_loader, test_loader = loaddata(args)
     
-    # load the Siamese Network
-    SiameseNet = CNN1D.CNN1D()
+    # load the Prototypical Network
+    Net = CNN1D.CNN1D()
 
     # Define optimizer and learning rate decay
-    parameter_list = [{"params": SiameseNet.parameters(), "lr": args.lr}]
+    parameter_list = [{"params": Net.parameters(), "lr": args.lr}]
     optimizer, lr_scheduler = utils.optimizer(args, parameter_list)
 
-    loss_fn = torch.nn.BCEWithLogitsLoss()
-
-    SiameseNet.to(device)
+    Net.to(device)
 
     # train
     best_acc = 0.0
-    meters = {"acc": [], "loss": []}
+    meters = {"train_acc": [], "train_loss": []}
 
     for epoch in range(args.max_epoch):
-        SiameseNet.train()
-        with tqdm(total=len(train_loader), leave=False) as pbar:
-            for i, (x1, x2, y) in enumerate(train_loader):
-                # move to GPU if available
-                x1 = x1.to(device)
-                x2 = x2.to(device)
-                y = y.to(device)
+        Net.train()
+        train_iter = iter(source_loader)
+        for x,y in tqdm(train_iter, leave=False):
+            # move to GPU if available
+            x = x.to(device)
+            y = y.to(device)
 
-                pre = SiameseNet(x1, x2)
-                loss = loss_fn(pre, y.unsqueeze(1))
+            outputs = Net(x)
 
-                # clear previous gradients, compute gradients
-                optimizer.zero_grad()
-                loss.backward()
+            loss, acc = loss_fn(outputs, target=y, n_support=args.support)
 
-                # performs updates using calculated gradients
-                optimizer.step()
+            # clear previous gradients, compute gradients
+            optimizer.zero_grad()
+            loss.backward()
 
-        pbar.update()
+            # performs updates using calculated gradients
+            optimizer.step()
 
-        # update lr
-        if lr_scheduler is not None:
-            lr_scheduler.step()
-
-        # evaluate
-        correct_num, error_num = Test(SiameseNet, test_loader)
-        acc = correct_num / (correct_num + error_num)
 
         if acc > best_acc:
             best_acc = acc
@@ -196,13 +197,14 @@ if __name__ == "__main__":
 
     args = parse_args()
 
-    # set the logger
-    if not os.path.exists("./logs"):
-        os.makedirs("./logs")
-    setlogger(args.log_file)
+    # # set the logger
+    # if not os.path.exists("./logs"):
+    #     os.makedirs("./logs")
+    # setlogger(args.log_file)
 
-    # save the args
-    for k, v in args.__dict__.items():
-        logging.info("{}: {}".format(k, v))
+    # # save the args
+    # for k, v in args.__dict__.items():
+    #     logging.info("{}: {}".format(k, v))
     
-    Train(args)
+    _, _, x = loaddata(args)
+    print(len(iter(x)))
