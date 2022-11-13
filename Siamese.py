@@ -178,7 +178,7 @@ def Train(args):
             best_acc = acc
         
         # print training history
-        logging.info("Epoch: {:>3}/{}, loss: {:.4f}, accuracy: {:6.2f}%".format(epoch+1, args.max_epoch, loss.item(), acc))
+        logging.info("Epoch: {:>3}/{}, loss: {:.4f}, accuracy: {:6.2f}%".format(epoch+1, args.max_epoch, loss.item(), acc*100))
 
         # recording history data
         meters["acc"].append(acc)

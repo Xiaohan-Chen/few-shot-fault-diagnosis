@@ -34,53 +34,63 @@ def euclidean_dist(x, y):
     return torch.pow(x - y, 2).sum(2)
 
 
-def prototypical_loss(input, target, n_support):
+def prototypical_loss(prediction, target, n_support):
     '''
-    Inspired by https://github.com/jakesnell/prototypical-networks/blob/master/protonets/models/few_shot.py
+    Reference: https://github.com/jakesnell/prototypical-networks/blob/master/protonets/models/few_shot.py
 
-    Compute the barycentres by averaging the features of n_support
-    samples for each class in target, computes then the distances from each
-    samples' features to each one of the barycentres, computes the
-    log_probability for each n_query samples for each one of the current
-    classes, of appartaining to a class c, loss and accuracy are then computed
-    and returned
     Args:
-    - input: the model output for a batch of samples
+    - prediction: the model output for a batch of samples
     - target: ground truth for the above batch of samples
     - n_support: number of samples to keep in account when computing
       barycentres, for each one of the current classes
     '''
-    target_cpu = target.to('cpu')
-    input_cpu = input.to('cpu')
+    prediction_cpu = prediction.to('cpu')  # (600, 64)
+    target_cpu = target.to('cpu')  # (600)
 
-    def supp_idxs(c):
-        # FIXME when torch will support where as np
-        return target_cpu.eq(c).nonzero()[:n_support].squeeze(1)
 
-    # FIXME when torch.unique will be available on cuda too
     classes = torch.unique(target_cpu)
     n_classes = len(classes)
-    # FIXME when torch will support where as np
-    # assuming n_query, n_target constants
-    n_query = target_cpu.eq(classes[0].item()).sum().item() - n_support
 
-    support_idxs = list(map(supp_idxs, classes))
+    n_query = target_cpu.eq(classes[0].item()).sum().item() - n_support # number of samples per class - n_support
 
-    prototypes = torch.stack([input_cpu[idx_list].mean(0) for idx_list in support_idxs])
-    # FIXME when torch will support where as np
-    query_idxs = torch.stack(list(map(lambda c: target_cpu.eq(c).nonzero()[n_support:], classes))).view(-1)
+    def find_support_idxs(c):
+        """
+        Input a class 'c', return the indexes of support samples
+        Fetch the first n_support samples as the support set per classes
+        Return dtype: list
+        """
+        return target_cpu.eq(c).nonzero()[:n_support].squeeze(1)
+    
+    def find_query_indxs(c):
+        """
+        Input a class 'c', return the indexes of query samples
+        Return dtype: list
+        """
+        return target_cpu.eq(c).nonzero()[n_support:]
 
-    query_samples = input.to('cpu')[query_idxs]
-    dists = euclidean_dist(query_samples, prototypes)
+    # Get support and query set indexes
+    support_indexes = list(map(find_support_idxs, classes))
+    query_indexes = torch.stack(list(map(find_query_indxs, classes))).view(-1)
 
-    log_p_y = F.log_softmax(-dists, dim=1).view(n_classes, n_query, -1)
+    # Compute prototype
+    prototypes = torch.stack([prediction_cpu[idx_list].mean(0) for idx_list in support_indexes]) # idx_list is list with the same classes
+    
+    # Fetch the query sample predictions
+    query_samples = prediction_cpu[query_indexes]
+
+    # Compute distances
+    dists = euclidean_dist(query_samples, prototypes) # [n_samples, n_classes], i.e. n_samples = n_classes * n_query
+
+    log_prob = F.log_softmax(-dists, dim=1).view(n_classes, n_query, -1) # gegative
+
+
 
     target_inds = torch.arange(0, n_classes)
-    target_inds = target_inds.view(n_classes, 1, 1)
+    target_inds = target_inds.view(n_classes, 1, 1) # log_prob的第一个维度是n_classes，所以才会转化成这样的形状
     target_inds = target_inds.expand(n_classes, n_query, 1).long()
 
-    loss_val = -log_p_y.gather(2, target_inds).squeeze().view(-1).mean()
-    _, y_hat = log_p_y.max(2)
+    loss_val = -log_prob.gather(2, target_inds).squeeze().view(-1).mean()
+    _, y_hat = log_prob.max(2)
     acc_val = y_hat.eq(target_inds.squeeze(2)).float().mean()
 
     return loss_val,  acc_val
