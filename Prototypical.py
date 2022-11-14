@@ -29,7 +29,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Implementation of Domain Adversarial Neural Networks')
 
     # log files
-    parser.add_argument("--log_file", type=str, default="./logs/Siamese.log", help="log file path")
+    parser.add_argument("--log_file", type=str, default="./logs/Prototypical.log", help="log file path")
 
     # dataset information
     parser.add_argument("--datadir", type=str, default="/home/xiaohan/codelab/datasets", help="data directory")
