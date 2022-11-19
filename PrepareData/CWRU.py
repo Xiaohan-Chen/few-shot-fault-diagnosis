@@ -79,6 +79,9 @@ def CWRUloader(args, load, label_set, number):
     """
     args: arguments
     number: the numbers of training samples, "all" or specific numbers (string type)
+
+    Return:
+        A dictionary, labels are keys, values are the corresponding fault signals
     """
     dataset = CWRU(args.datadir, load, label_set, args.window, args.normalization, args.backbone, args.fft, number)
 

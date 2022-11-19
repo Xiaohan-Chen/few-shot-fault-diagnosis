@@ -5,11 +5,10 @@ Mail: cxh_bb@outlook.com
 """
 
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 import os
 import numpy as np
 import time
-import random
 
 class ProtitypicalData(Dataset):
     def __init__(self, dataset):

@@ -2,8 +2,10 @@
 A few shot learning repository for bearing fault diagnosis.
 
 ## :clipboard: To Do
-- [ ] Siamese Networks
-- [ ] Prototypical Networks
+- [x] Siamese Networks
+- [x] Prototypical Networks
+- [ ] Matching Networks
+- [ ] Relation Networks
 
 ## :package: Packages
 - Python 3.9.12

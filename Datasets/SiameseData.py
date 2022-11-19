@@ -1,8 +1,7 @@
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 import os
 import numpy as np
-import time
 import random
 
 class SiameseTrain(Dataset):
