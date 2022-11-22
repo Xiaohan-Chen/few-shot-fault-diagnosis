@@ -69,7 +69,7 @@ def parse_args():
     parser.add_argument('--lr_scheduler', type=str, default='stepLR', choices=['step', 'exp', 'stepLR', 'fix'], help='the learning rate schedule')
     parser.add_argument("--optimizer", type=str, default="adam", choices=["adam", "sgd"])
     parser.add_argument('--gamma', type=float, default=0.8, help='learning rate scheduler parameter for step and exp')
-    parser.add_argument('--steps', type=str, default='30, 120', help='the learning rate decay for step and stepLR')
+    parser.add_argument('--steps', type=str, default='60, 120', help='the learning rate decay for step and stepLR')
 
     args = parser.parse_args()
     return args

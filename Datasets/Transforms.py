@@ -46,7 +46,7 @@ def Shift(signal):
     '''
     Shift the signal forwards or backwards
     '''
-    shift_factor = np.random.uniform(0,0.4)
+    shift_factor = np.random.uniform(0,0.3)
     shift_length = round(signal.size(-1) * shift_factor)
     num_places_to_shift = round(np.random.uniform(-shift_length, shift_length))
     shifted_signal = torch.roll(signal, num_places_to_shift, dims=-1)
@@ -60,7 +60,7 @@ def TimeMask(signal):
     device = signal.device
     signal_copy = signal.clone()
 
-    mask_factor = np.random.uniform(0.1,0.5)
+    mask_factor = np.random.uniform(0.1,0.45)
     max_mask_length = int(signal_length * mask_factor)  # maximum mask band length
     mask_length = np.random.randint(max_mask_length) # randomly choose a mask band length
     mask_start = np.random.randint(0, signal_length) # randomly choose a mask band start point
@@ -94,6 +94,7 @@ def Fade(signal):
     # fade in
     if probability() > 0.5:
         fade_in = torch.linspace(0,1,fade_in_length,device=device)
+        fade_in = torch.log10(0.1 + fade_in) + 1 # logarithmic
         ones = torch.ones(signal_length - fade_in_length, device=device)
         fade_in_mask = torch.cat((fade_in, ones))
         signal_copy *= fade_in_mask
@@ -101,6 +102,7 @@ def Fade(signal):
     # fade out
     if probability() > 0.5:
         fade_out = torch.linspace(1,0,fade_out_length,device=device)
+        fade_out = torch.log10(0.1 + fade_out) + 1 # logarithmic
         ones = torch.ones(signal_length - fade_out_length, device=device)
         fade_out_mask = torch.cat((ones, fade_out))
         signal_copy *= fade_out_mask

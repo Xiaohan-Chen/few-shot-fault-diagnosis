@@ -6,6 +6,7 @@ A few shot learning repository for bearing fault diagnosis.
 - [x] Prototypical Networks
 - [ ] Matching Networks
 - [ ] Relation Networks
+- [ ] MoCo v2
 
 ## :package: Packages
 - Python 3.9.12

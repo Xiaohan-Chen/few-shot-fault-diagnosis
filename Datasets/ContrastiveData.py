@@ -12,9 +12,6 @@ import time
 
 
 class ContrastiveData(Dataset):
-    '''
-    Generative a data pair without augmentation.
-    '''
     def __init__(self, dataset):
         '''
         dataset is a dictionary, labels are keys, values are the corresponding fault signals
@@ -54,7 +51,7 @@ class ContrastiveData(Dataset):
 class ContrastivePair(ContrastiveData):
     '''
     generative signal pair with random waveform transformations
-    Reference: https://colab.research.google.com/drive/17wj2PyyC6BBMrEgAnMT23SikFiFLUFq5#scrollTo=AoliFX5AnBJ0
+    Reference: https://colab.research.google.com/github/facebookresearch/moco/blob/colab-notebook/colab/moco_cifar10_demo.ipynb
     '''
     def __getitem__(self, index):
         data = self.x[index]
