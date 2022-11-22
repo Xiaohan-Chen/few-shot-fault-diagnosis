@@ -24,7 +24,7 @@ class CNN1D(nn.Module):
             nn.MaxPool1d(kernel_size=2, padding=0)
             )
         self.avgpool = nn.AdaptiveAvgPool1d(64) # output (batch, 64, 64)
-        self.fc = nn.Sequential(nn.Linear(64*64,dim))
+        self.fc = nn.Linear(64*64,dim)
 
     def forward(self, x):
         x = self.layer1(x)

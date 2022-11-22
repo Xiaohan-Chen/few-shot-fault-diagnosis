@@ -2,7 +2,7 @@
 An implementation of the "Momentum Contrast for Unsupervised Visual Representation Learning" in PyTorch, 
 trained and tested on bearing fault diagnosis probelm.
 
-Data: 2022/11/18
+Data: 2022/11/22
 Author: Xiaohan Chen
 Email: cxh_bb@outlook.com
 """
@@ -60,7 +60,7 @@ def parse_args():
     parser.add_argument("--pretrained", type=bool, default=False, help="whether use pre-trained model in transfer learning tasks")
 
     # trainig data
-    parser.add_argument("--n_train", type=int, default=200, help="The number of training data per class")
+    parser.add_argument("--n_train", type=int, default=2000, help="The number of training data per class")
     parser.add_argument("--n_test", type=int, default=50, help="the number of test data per class")
 
     # moco
@@ -310,7 +310,7 @@ def adjust_learning_rate(optimizer, epoch, args):
     """Decay the learning rate based on schedule"""
     lr = args.lr
     if args.cos:  # cosine lr schedule
-        lr *= 0.5 * (1. + math.cos(math.pi * epoch / args.epochs))
+        lr *= 0.5 * (1. + math.cos(math.pi * epoch / args.max_epoch))
     else:  # stepwise lr schedule
         for milestone in args.steps:
             lr *= 0.1 if epoch >= milestone else 1.
@@ -402,7 +402,7 @@ def Train(args):
     # train
     # k+1-way contrastive accuracy and loss
     meters = {"train_loss": [], "test_acc": []}
-
+    best_acc = 0.0
     for epoch in range(args.max_epoch):
         Net.train()
         # define lr scheduler
@@ -428,6 +428,9 @@ def Train(args):
         train_loss = np.mean(loss_his)
         meters["train_loss"].append(train_loss)
         meters["test_acc"].append(test_acc)
+        if test_acc > best_acc:
+            best_acc = test_acc
+            utils.save_model(Net.encoder_q.net, args)
 
         # print training history
         logging.info("Epoch: {:>3}/{}, current lr: {:.6f}, train_loss: {:.4f}, test_acc: {:6.2f}%".format(

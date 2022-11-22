@@ -1,4 +1,5 @@
 import logging
+import os
 import torch
 import pickle
 import torch.optim as optim
@@ -13,11 +14,24 @@ def read_pkl(path):
         data = pickle.load(f)
     return data
 
+def accuracy(outputs, labels):
+    """
+    Compute the accuracy
+    outputs, labels: (tensor)
+    return: (float) accuracy in [0, 100]
+    """
+    pre = torch.max(outputs.cpu(), 1)[1].numpy()
+    y = labels.data.cpu().numpy()
+    acc = ((pre == y).sum() / len(y)) * 100
+    return acc
+
 def save_model(model, args):
+    if not os.path.exists("./checkpoints"):
+        os.makedirs("./checkpoints")
     if not args.fft:
-        torch.save(model.state_dict(), "./checkpoints/{}_checkpoint.tar".format(args.backbone))
+        torch.save(model.state_dict(), "./checkpoints/{}.tar".format(args.backbone))
     else:
-        torch.save(model.state_dict(), "./checkpoints/{}FFT_checkpoint.tar".format(args.backbone))
+        torch.save(model.state_dict(), "./checkpoints/{}FFT.tar".format(args.backbone))
 
 def optimizer(args, parameter_list):
     # define optimizer

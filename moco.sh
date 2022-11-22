@@ -1,1 +1,1 @@
-python3 MoCo.py --cos
+python3 MoCo.py --cos --batch_size 256 --max_epoch 200 --knn-k 80 --lr 0.006
