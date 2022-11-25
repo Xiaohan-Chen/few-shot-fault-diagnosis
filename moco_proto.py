@@ -1,7 +1,8 @@
 '''
-A linear classifier protocol for self-supervised learning pre-trained model.
+Self-supervised learning to pre-train the backbone, freeze the backbone and
+test the performance on few-shot problems via prototypical method.
 
-Data: 2022/11/22
+Data: 2022/11/24
 Author: Xiaohan Chen
 Email: cxh_bb@outlook.com
 '''
@@ -23,22 +24,21 @@ from tqdm import *
 
 from PrepareData.CWRU import CWRUloader
 from ContrastiveNets import CNN1D
-from Datasets import ContrastiveData
+from Datasets import PrototypicalData
+from Sampler import BatchSampler
+from Loss.PrototypicalLoss import prototypical_loss as loss_fn
 
 import Utils.utilis as utils
 
 # ===== Define argments =====
 def parse_args():
-    parser = argparse.ArgumentParser(description='Implementation of MoCo v2.')
-
-    # log files
-    parser.add_argument("--log_file", type=str, default="./logs/LinearProtocol.log", help="log file path")
+    parser = argparse.ArgumentParser(description='Self-supervised learning for few-shot learning test.')
 
     # dataset information
     parser.add_argument("--datadir", type=str, default="/home/xiaohan/codelab/datasets", help="data directory")
     parser.add_argument("--dataname", type=str, default="CWRU", choices=["CWRU", "PU"], help="choice a dataset")
-    parser.add_argument("--load", type=int, default=1, help="source domain working condition")
-    parser.add_argument("--label_set", type=list, default=[0,1,2,3,4,5,6,7,8,9], help="source domain label set")
+    parser.add_argument("--load", type=int, default=2, help="source domain working condition")
+    parser.add_argument("--label_set", type=list, default=[0,1,2,3,4,5,6,7,8,9], help="domain label set")
 
     # pre-processing
     parser.add_argument("--fft", type=bool, default=False, help="FFT preprocessing")
@@ -54,14 +54,14 @@ def parse_args():
     # elif backbone == "MLPNet",               data shape: (batch size, 1024)
     parser.add_argument("--checkpoint", type=str, default="./checkpoints/CNN1D.tar", help="pre-trained model parameters")
 
-    # trainig data
-    parser.add_argument("--n_train", type=int, default=20, help="The number of training data per class")
-    parser.add_argument("--n_test", type=int, default=500, help="the number of test data per class")
+    # dataset
+    parser.add_argument("--n_sample", type=int, default=200, help="test smples per class")
+    parser.add_argument("--n_support", type=int, default=5, help="The number of training data per class")
+    parser.add_argument("--n_query", type=int, default=5, help="the number of test data per class")
+    parser.add_argument("--episodes", type=int, default=60, help="the number of episodes per epoch")
 
     # optimization & training
     parser.add_argument("--num_workers", type=int, default=0, help="the number of dataloader workers")
-    parser.add_argument("--max_epoch", type=int, default=100)
-    parser.add_argument("--batch_size", type=int, default=256, help="batch size")
     parser.add_argument("--lr", type=float, default=1e-4, help="learning rate")
     parser.add_argument('--lr_scheduler', type=str, default='step', choices=['step', 'exp', 'stepLR', 'fix'], help='the learning rate schedule')
     parser.add_argument("--optimizer", type=str, default="sgd", choices=["adam", "sgd"])
@@ -74,23 +74,21 @@ def parse_args():
 # ===== Load Data =====
 def loaddata(args):
     if args.dataname == "CWRU":
-        data = CWRUloader(args, args.load, args.label_set, args.n_train + args.n_test)
+        data = CWRUloader(args, args.load, args.label_set, args.n_sample)
 
     print("Data size of training sample per class: ", data[0].shape)
 
-    data_train = {key:data[key][:args.n_train] for key in data.keys()}
-    data_test = {key:data[key][-args.n_test:] for key in data.keys()}
+    dataset = PrototypicalData.ProtitypicalData(data)
 
-    train_data = ContrastiveData.ContrastiveData(data_train)
-    test_data = ContrastiveData.ContrastiveData(data_test)
+    sampler = BatchSampler.BatchSampler(dataset.y, args.n_support, args.n_query, args.episodes)
+
 
     # dataloader
-    train_loader = DataLoader(train_data, batch_size=args.batch_size, shuffle=True)
-    test_loader = DataLoader(test_data, batch_size=args.batch_size)
+    data_loader = DataLoader(dataset, batch_sampler=sampler)
 
     print("========== Loading dataset down! ==========")
     
-    return train_loader, test_loader
+    return data_loader
 
 # ===== Load pre-trained model via self-supervised learning =====
 def Load_model(args):
@@ -101,13 +99,10 @@ def Load_model(args):
         params = torch.load(args.checkpoint, map_location="cpu")
         Model.load_state_dict(params)
 
-        # freeze all layers but the last fc
+        # freeze all layers
         for name, param in Model.named_parameters():
-            if name not in ['fc.weight', 'fc.bias']:
-                param.requires_grad = False
-        # init the fc layer
-        Model.fc.weight.data.normal_(mean=0.0, std=0.01)
-        Model.fc.bias.data.zero_()
+            param.requires_grad = False
+
     else:
         raise Exception("Checkpoint {} is not found".format(args.checkpoint))
 
@@ -133,7 +128,7 @@ def Test(model, dataloader):
     return correct_num / total_num
 
 # ===== Train the model =====
-def Train(args):
+def Evaluate(args):
     # Consider the gpu or cpu condition
     if torch.cuda.is_available():
         device = torch.device("cuda")
@@ -146,87 +141,34 @@ def Train(args):
         logging.info('using {} cpu'.format(device_count))
     
     # load datasets
-    train_loader, test_loader = loaddata(args)
+    dataloader = loaddata(args)
 
     # load the pre-trained model
     model = Load_model(args).to(device)
 
-    # define loss function (criterion) and optimizer
-    criterion = nn.CrossEntropyLoss()
-
-    # optimize only the fc layer
-    parameters = list(filter(lambda p: p.requires_grad, model.parameters()))
-    assert len(parameters) == 2 # fc.weight, fc.bias
-    optimizer, lr_scheduler = utils.optimizer(args, parameters)
-
-    # train
-    best_acc = 0.0
-    meters = {"loss": [], "train_acc": [], "test_acc": []}
-    for epoch in range(args.max_epoch):
-        # BatchNorm in train mode may revise running mean/std
-        # therefore, transform the model to eval mode
-        model.eval()
-        correct_num, total_num = 0, 0
-        for x,y in tqdm(train_loader, ncols = 70, leave=False):
+    model.eval()
+    acc_his, loss_his = [], []
+    with torch.no_grad():
+        for x,y in tqdm(iter(dataloader), ncols = 70, leave=False):
             # move to GPU if available
             x, y = x.to(device), y.to(device)
             
             # compute output
             output = model(x)
-            loss = criterion(output, y.long())
 
-            # clear previous gradients, compute gradients
-            optimizer.zero_grad()
-            loss.backward()
+            loss, acc = loss_fn(output, target=y, n_support=args.n_support)
 
-            # performs updates using calculated gradients
-            optimizer.step()
+            acc_his.append(acc.item())
+            loss_his.append(loss.item())
+    acc_mean = np.array(acc_his).mean()
+    loss_mean = np.array(loss_his).mean()
 
-            pre = torch.max(output.cpu(), 1)[1].numpy()
-            label = y.data.cpu().numpy()
-            correct_num += (pre == label).sum()
-            total_num += y.size(0)
+    acc_var = np.array(acc_his).var()
+    loss_var = np.array(loss_his).var()
 
-        train_acc = correct_num / total_num
-        meters["loss"].append(loss.item())
-        meters["train_acc"].append(train_acc)
-
-        # update lr
-        if lr_scheduler is not None:
-            lr_scheduler.step()
-
-        # test
-        test_acc = Test(model, test_loader)
-        meters["test_acc"].append(test_acc)
-        if test_acc > best_acc:
-            best_acc = test_acc
-        
-        # print training history
-        logging.info("Epoch: {:>3}/{}, train_loss: {:.4f}, train_acc: {:6.2f}%, test_acc: {:6.2f}%".format(
-            epoch+1, args.max_epoch, loss.item(), train_acc*100, test_acc*100))
-
-    utils.save_log(meters, "./History/LinearProtocol.pkl")
-
-    logging.info("Best test accuracy: {:6.2f}".format(best_acc*100))
-    logging.info("="*15+"Done!"+"="*15)
-
-
-
+    print("Test mean accuracy: {}, var: {}.".format(acc_mean, acc_var))
+    print("Test mean loss: {}, var: {}".format(loss_mean, loss_var))
 
 if __name__ == "__main__":
-
-    if not os.path.exists("./History"):
-        os.makedirs("./History")
-
     args = parse_args()
-
-    # set the logger
-    if not os.path.exists("./logs"):
-        os.makedirs("./logs")
-    setlogger(args.log_file)
-
-    # save the args
-    for k, v in args.__dict__.items():
-        logging.info("{}: {}".format(k, v))
-    
-    Train(args)
+    Evaluate(args)

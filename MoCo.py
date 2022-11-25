@@ -60,7 +60,7 @@ def parse_args():
     parser.add_argument("--pretrained", type=bool, default=False, help="whether use pre-trained model in transfer learning tasks")
 
     # trainig data
-    parser.add_argument("--n_train", type=int, default=2000, help="The number of training data per class")
+    parser.add_argument("--n_train", type=int, default=500, help="The number of training data per class")
     parser.add_argument("--n_test", type=int, default=50, help="the number of test data per class")
 
     # moco
@@ -167,7 +167,7 @@ class ModelBase(nn.Module):
         super(ModelBase, self).__init__()
 
         # use split batchnorm
-        norm_layer = partial(SplitBatchNorm1D, num_splits=bn_splits) if bn_splits > 1 else nn.BatchNorm2d
+        norm_layer = partial(SplitBatchNorm1D, num_splits=bn_splits) if bn_splits > 1 else nn.BatchNorm1d
         self.net = CNN1D.CNN1D(dim=feature_dim, norm_layer=norm_layer)
 
     def forward(self, x):
@@ -180,7 +180,7 @@ class ModelMoCo(nn.Module):
     '''
     Reference: https://colab.research.google.com/github/facebookresearch/moco/blob/colab-notebook/colab/moco_cifar10_demo.ipynb
     '''
-    def __init__(self, dim=128, k=4096, m=0.99, T=0.1, bn_splits=8, symmetric=False):
+    def __init__(self, dim=128, k=4096, m=0.99, T=0.1, bn_splits=8, symmetric=True):
         super(ModelMoCo, self).__init__()
 
         self.k = k
@@ -437,8 +437,8 @@ def Train(args):
             epoch+1, args.max_epoch, optimizer.param_groups[0]['lr'], train_loss, test_acc))
 
     utils.save_log(meters, "./History/MoCo.pkl")
-
-    logging.info("="*15+"Done!"+"="*15)
+    logging.info("Best test accuracy: {:6.2f}%".format(best_acc))
+    logging.info("="*20+"Done!"+"="*20)
 
 if __name__ == "__main__":
 

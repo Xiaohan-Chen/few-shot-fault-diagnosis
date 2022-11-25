@@ -2,6 +2,7 @@
 import torch
 from torch.nn import functional as F
 from torch.nn.modules import Module
+import time
 
 
 class PrototypicalLoss(Module):
@@ -44,8 +45,8 @@ def prototypical_loss(prediction, target, n_support):
     - n_support: number of samples to keep in account when computing
       barycentres, for each one of the current classes
     '''
-    prediction_cpu = prediction.to('cpu')  # (600, 64)
-    target_cpu = target.to('cpu')  # (600)
+    prediction_cpu = prediction.to('cpu')  # [class*(num_support + num_querry), 64]
+    target_cpu = target.to('cpu')  # [class*(num_support + num_querry)]
 
 
     classes = torch.unique(target_cpu)
@@ -72,25 +73,23 @@ def prototypical_loss(prediction, target, n_support):
     support_indexes = list(map(find_support_idxs, classes))
     query_indexes = torch.stack(list(map(find_query_indxs, classes))).view(-1)
 
-    # Compute prototype
+    # Compute prototype [num_class, feature_dim]
     prototypes = torch.stack([prediction_cpu[idx_list].mean(0) for idx_list in support_indexes]) # idx_list is list with the same classes
-    
+
     # Fetch the query sample predictions
     query_samples = prediction_cpu[query_indexes]
 
     # Compute distances
     dists = euclidean_dist(query_samples, prototypes) # [n_samples, n_classes], i.e. n_samples = n_classes * n_query
 
-    log_prob = F.log_softmax(-dists, dim=1).view(n_classes, n_query, -1) # gegative
-
-
+    log_prob = F.log_softmax(-dists, dim=1).view(n_classes, n_query, -1) # [10, 5, 10]
 
     target_inds = torch.arange(0, n_classes)
-    target_inds = target_inds.view(n_classes, 1, 1) # log_prob的第一个维度是n_classes，所以才会转化成这样的形状
+    target_inds = target_inds.view(n_classes, 1, 1)
     target_inds = target_inds.expand(n_classes, n_query, 1).long()
 
-    loss_val = -log_prob.gather(2, target_inds).squeeze().view(-1).mean()
+    loss_query = -log_prob.gather(2, target_inds).squeeze().view(-1).mean()
     _, y_hat = log_prob.max(2)
-    acc_val = y_hat.eq(target_inds.squeeze(2)).float().mean()
+    acc_query = y_hat.eq(target_inds.squeeze(2)).float().mean() # query set accuracy
 
-    return loss_val,  acc_val
+    return loss_query,  acc_query

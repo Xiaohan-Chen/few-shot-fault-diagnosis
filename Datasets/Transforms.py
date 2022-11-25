@@ -149,8 +149,8 @@ def random_waveform_transforms(signal):
     # move to GPU
     signal = ToTensor(signal).float()
 
-    # 50% probability to add Gaussian noise
-    if probability() > 0.5:
+    # 70% probability to add Gaussian noise
+    if probability() > 0.3:
         signal = AddGaussianSNR(signal)
 
     # 40% probability to shift the signal
@@ -161,16 +161,16 @@ def random_waveform_transforms(signal):
     if probability() > 0.5:
         signal = TimeMask(signal)
     
-    # 30% probability to fade
-    if probability() > 0.7:
+    # 50% probability to fade
+    if probability() > 0.5:
         signal = Fade(signal)
 
-    # 30% probability to gain
-    if probability() > 0.7:
+    # 40% probability to gain
+    if probability() > 0.6:
         signal = Gain(signal)
 
-    # 40% probability to reverse
-    if probability() > 0.6:
+    # 30% probability to reverse
+    if probability() > 0.7:
         signal = Reverse(signal)
     
     signal = Normal(signal)

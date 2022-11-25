@@ -44,7 +44,7 @@ def parse_args():
 
 
     # backbone
-    parser.add_argument("--backbone", type=str, default="ResNet1D", choices=["ResNet1D", "ResNet2D", "MLPNet", "CNN1D"])
+    parser.add_argument("--backbone", type=str, default="CNN1D", choices=["ResNet1D", "ResNet2D", "MLPNet", "CNN1D"])
     # if   backbone in ("ResNet1D", "CNN1D"),  data shape: (batch size, 1, 1024)
     # elif backbone == "ResNet2D",             data shape: (batch size, 3, 32, 32)
     # elif backbone == "MLPNet",               data shape: (batch size, 1024)
