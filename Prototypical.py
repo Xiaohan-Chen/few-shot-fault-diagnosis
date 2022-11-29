@@ -13,6 +13,7 @@ import os
 import time
 import numpy as np
 import torch
+import torch.nn as nn
 from torch.utils.data import DataLoader
 from Utils.logger import setlogger
 from tqdm import *
@@ -56,13 +57,13 @@ def parse_args():
     parser.add_argument("--pretrained", type=bool, default=False, help="whether use pre-trained model in transfer learning tasks")
 
 
-    parser.add_argument("--n_train", type=int, default=800, help="The number of training data per class")
+    parser.add_argument("--n_train", type=int, default=500, help="The number of training data per class")
     parser.add_argument("--n_val", type=int, default=200, help="the number of validation data per class")
     parser.add_argument("--n_test", type=int, default=200, help="the number of test data per class")
     parser.add_argument("--support", type=int, default=5, help="the number of support set per class")
     parser.add_argument("--query", type=int, default=5, help="the number of query set per class")
     parser.add_argument("--episodes", type=int, default=80, help="the number of episodes per epoch")
-
+    parser.add_argument("--showstep", type=int, default=50, help="show training history every 'showstep' steps")
     # optimization & training
     parser.add_argument("--num_workers", type=int, default=0, help="the number of dataloader workers")
     parser.add_argument("--max_epoch", type=int, default=300)
@@ -103,8 +104,6 @@ def loaddata(args):
     val_loader = DataLoader(val_data, batch_sampler=val_sampler)
     test_loader = DataLoader(test_data, batch_sampler=test_sampler)
 
-    print("========== Loading dataset down! ==========")
-    
     return source_loader, val_loader, test_loader
 
 # ===== Evaluate the model =====
@@ -155,7 +154,7 @@ def Train(args):
     # train
     best_acc = 0.0
     meters = {"train_acc": [], "train_loss": [], "val_acc": [], "val_loss": []}
-
+    pre_prototypes = torch.randn(10, 64)
     for epoch in range(args.max_epoch):
         Net.train()
         train_iter = iter(source_loader) # len(train_iter) = episodes
@@ -166,7 +165,6 @@ def Train(args):
             y = y.to(device)  # [class*(num_support + num_querry)]
             outputs = Net(x)  # [class*(num_support + num_querry), feature_dim]
             loss, acc = loss_fn(outputs, target=y, n_support=args.support)
-
             # clear previous gradients, compute gradients
             optimizer.zero_grad()
             loss.backward()
@@ -199,8 +197,9 @@ def Train(args):
             torch.save(Net.state_dict(), "./checkpoints/prototypical_best.tar")
 
         # print training history
-        logging.info("Epoch: {:>3}/{}, train_loss: {:.4f}, val_loss: {:.4f}, train_acc: {:6.2f}%, val_acc: {:6.2f}%".format(
-            epoch+1, args.max_epoch, train_loss, val_loss, train_acc*100, val_acc*100))
+        if epoch % args.showstep == 0:
+            logging.info("Epoch: {:>3}/{}, train_loss: {:.4f}, val_loss: {:.4f}, train_acc: {:6.2f}%, val_acc: {:6.2f}%".format(
+                epoch+1, args.max_epoch, train_loss, val_loss, train_acc*100, val_acc*100))
 
     utils.save_log(meters, "./History/Prototypical.pkl")
 
@@ -213,8 +212,17 @@ def Train(args):
     Net.load_state_dict(params)
     test_acc, _ = Test(args, Net, test_loader)
     logging.info("===> Best validation accuracy: {:6.2f}%".format(best_acc*100))
-    logging.info("===> Test results on best validation model: {:6.2f}%".format(test_acc*100))
+    logging.info("===> Test results with best validation model: {:6.2f}%".format(test_acc*100))
     logging.info("="*15+"Done!"+"="*15)
+
+    # # if run many rounds, using the following commands to save the test accuracy
+    # if os.path.exists("./History/5_round_pro.txt"):
+    #     results = np.loadtxt("./History/5_round_pro.txt")
+    #     results = np.append(results, test_acc)
+    #     np.savetxt("./History/5_round_pro.txt", results)
+    # else:
+    #     result = np.array([test_acc])
+    #     np.savetxt("./History/5_round_pro.txt", result)
 
 if __name__ == "__main__":
 

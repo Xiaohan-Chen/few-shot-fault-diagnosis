@@ -42,7 +42,7 @@ def transformation(sub_data, fft, normalization, backbone):
 
 def CWRU(datadir, load, labels, window, normalization, backbone, fft, number):
     """
-    loading the hole dataset
+    loading the whole dataset
     """
     path = datadir + "/CWRU/" + "Drive_end_" + str(load) + "/"
     dataset = {label: [] for label in labels}

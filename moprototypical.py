@@ -21,8 +21,9 @@ from Utils.logger import setlogger
 from tqdm import *
 
 from PrepareData.CWRU import CWRUloader
+from PrepareData.PU import PUloader
 #from PrototypicalNets import CNN1D
-from ContrastiveNets import CNN1D
+from ContrastiveNets import CNN1D, LeNet, AlexNet, ResNet18
 from Datasets import PrototypicalData
 from Sampler import BatchSampler
 from Loss.PrototypicalLoss import prototypical_loss as loss_fn
@@ -60,12 +61,16 @@ def parse_args():
     parser.add_argument("--pretrained", type=bool, default=False, help="whether use pre-trained model in transfer learning tasks")
 
 
-    parser.add_argument("--n_train", type=int, default=800, help="The number of training data per class")
+    parser.add_argument("--n_train", type=int, default=500, help="The number of training data per class")
     parser.add_argument("--n_val", type=int, default=200, help="the number of validation data per class")
     parser.add_argument("--n_test", type=int, default=200, help="the number of test data per class")
     parser.add_argument("--support", type=int, default=5, help="the number of support set per class")
     parser.add_argument("--query", type=int, default=5, help="the number of query set per class")
     parser.add_argument("--episodes", type=int, default=80, help="the number of episodes per epoch")
+
+    parser.add_argument("--split", type=int, default=4, help="split batch normalization, split >= 1 and \in R")
+    parser.add_argument("--m", type=float, default=0.99, help="momentum of updating encoder support")
+    parser.add_argument("--showstep", type=int, default=50, help="show training history every 'showstep' steps")
 
     # optimization & training
     parser.add_argument("--num_workers", type=int, default=0, help="the number of dataloader workers")
@@ -83,9 +88,14 @@ def parse_args():
 def loaddata(args):
     if args.source_dataname == "CWRU":
         source_data = CWRUloader(args, args.s_load, args.s_label_set, args.n_train)
+    elif args.source_dataname == "PU":
+        source_data = PUloader(args, args.s_load, args.s_label_set, args.n_train)
     
     if args.target_dataname == "CWRU":
         target_data = CWRUloader(args, args.t_load, args.t_label_set, args.n_val+args.n_test)
+    elif args.target_dataname == "PU":
+        target_data = PUloader(args, args.t_load, args.t_label_set, args.n_val+args.n_test)
+
     val_data = {key:target_data[key][:args.n_val] for key in target_data.keys()}
     test_data = {key:target_data[key][-args.n_test:] for key in target_data.keys()}
 
@@ -106,8 +116,6 @@ def loaddata(args):
     source_loader = DataLoader(source_data, batch_sampler=source_sampler)
     val_loader = DataLoader(val_data, batch_sampler=val_sampler)
     test_loader = DataLoader(test_data, batch_sampler=test_sampler)
-
-    print("========== Loading dataset down! ==========")
     
     return source_loader, val_loader, test_loader
 
@@ -157,6 +165,17 @@ class SplitBatchNorm1D(nn.BatchNorm1d):
         else:
             raise Exception("{} dimentinal signal time masking is not implemented, please try 1 or 2 dimentional signal.")
 
+class Normalize(nn.Module):
+
+    def __init__(self, power=2):
+        super(Normalize, self).__init__()
+        self.power = power
+    
+    def forward(self, x):
+        norm = x.pow(self.power).sum(1, keepdim=True).pow(1./self.power)
+        out = x.div(norm)
+        return out
+
 class MoPrototypical(nn.Module):
     def __init__(self, m = 0.99, bn_splits = 4):
         super(MoPrototypical, self).__init__()
@@ -164,8 +183,11 @@ class MoPrototypical(nn.Module):
 
         self.norm_layer = partial(SplitBatchNorm1D, num_splits=bn_splits) if bn_splits > 1 else nn.BatchNorm1d
         # support encoder_s and query encoder_q
-        self.encoder_s = CNN1D.CNN1D(dim=64, norm_layer=self.norm_layer)
-        self.encoder_q = CNN1D.CNN1D(dim=64, norm_layer=self.norm_layer)
+        # self.encoder_s = CNN1D.CNN1D(dim=64, norm_layer=self.norm_layer)
+        # self.encoder_q = CNN1D.CNN1D(dim=64, norm_layer=self.norm_layer)
+        self.encoder_s = ResNet18.resnet18()
+        self.encoder_q = ResNet18.resnet18()
+        self.norm = Normalize(2)
 
         for param_s, param_q in zip(self.encoder_s.parameters(), self.encoder_q.parameters()):
             param_s.data.copy_(param_q.data)
@@ -215,8 +237,13 @@ class MoPrototypical(nn.Module):
         support_out = self.encoder_s(x)
         query_out = self.encoder_q(x)
 
-        n_classes = 10
-        support_indices, query_indices = self.split_support_query(y, 5)
+        # L2 normaliza
+        support_out = self.norm(support_out)
+        query_out = self.norm(query_out)
+
+        n_classes = len(torch.unique(y))
+        n_query = 5
+        support_indices, query_indices = self.split_support_query(y, n_query)
 
         prototypes = torch.stack([support_out[idx_list].mean(0) for idx_list in support_indices])
 
@@ -226,7 +253,7 @@ class MoPrototypical(nn.Module):
         # Compute distances
         dists = self.euclidean_dist(query_samples, prototypes) # [n_samples, n_classes], i.e. n_samples = n_classes * n_query
 
-        log_prob = F.log_softmax(-dists, dim=1).view(n_classes, 5, -1) # [10, 5, 10]
+        log_prob = F.log_softmax(-dists, dim=1).view(n_classes, n_query, -1) # [10, 5, 10]
 
         target_inds = torch.arange(0, n_classes, device='cuda:0')
         target_inds = target_inds.view(n_classes, 1, 1)
@@ -273,7 +300,7 @@ def Train(args):
     source_loader, val_loader, test_loader = loaddata(args)
     
     # load the Prototypical Network
-    Net = MoPrototypical()
+    Net = MoPrototypical(m=args.m,bn_splits=4)
 
     # Define optimizer and learning rate decay
     parameter_list = [{"params": Net.parameters(), "lr": args.lr}]
@@ -328,8 +355,9 @@ def Train(args):
             torch.save(Net.state_dict(), "./checkpoints/moprototypical_best.tar")
 
         # print training history
-        logging.info("Epoch: {:>3}/{}, current lr: {:.6f}, train_loss: {:.4f}, val_loss: {:.4f}, train_acc: {:6.2f}%, val_acc: {:6.2f}%".format(
-            epoch+1, args.max_epoch, optimizer.param_groups[0]['lr'], train_loss, val_loss, train_acc*100, val_acc*100))
+        if epoch % args.showstep == 0:
+            logging.info("Epoch: {:>3}/{}, current lr: {:.6f}, train_loss: {:.4f}, val_loss: {:.4f}, train_acc: {:6.2f}%, val_acc: {:6.2f}%".format(
+                epoch+1, args.max_epoch, optimizer.param_groups[0]['lr'], train_loss, val_loss, train_acc*100, val_acc*100))
 
     utils.save_log(meters, "./History/MoPrototypical.pkl")
 
@@ -341,8 +369,18 @@ def Train(args):
     Net.load_state_dict(params)
     test_acc, _ = Test(Net, test_loader)
     logging.info("===> Best validation accuracy: {:6.2f}%".format(best_acc*100))
-    logging.info("===> Test results on best validation model: {:6.2f}%".format(test_acc*100))
+    logging.info("===> Test results with best validation model: {:6.2f}%".format(test_acc*100))
     logging.info("="*15+"Done!"+"="*15)
+
+    # # if run many rounds, using the following commands to save 
+    # # the test accuracy with best validation model
+    # if os.path.exists("./History/5_round_mopro.txt"):
+    #     results = np.loadtxt("./History/5_round_mopro.txt")
+    #     results = np.append(results, test_acc)
+    #     np.savetxt("./History/5_round_mopro.txt", results)
+    # else:
+    #     result = np.array([test_acc])
+    #     np.savetxt("./History/5_round_mopro.txt", result)
 
 if __name__ == "__main__":
 
