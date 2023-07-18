@@ -17,8 +17,8 @@ For further introductions to transfer learning and few-shot learning in bearing 
 ```
 
 ## :clipboard: 2. To Do
-- [x] Siamese Networks
-- [x] Prototypical Networks
+- [x] [Siamese Networks](https://www.cs.cmu.edu/~rsalakhu/papers/oneshot1.pdf)
+- [x] [Prototypical Networks](https://arxiv.org/abs/1703.05175)
 - [ ] Matching Networks
 - [ ] Relation Networks
 
