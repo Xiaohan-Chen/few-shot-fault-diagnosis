@@ -1,7 +1,7 @@
 ## Few-shot learning for bearing fault diagnosis pytorch
 
 ## :book: 1. Introduction
-A public repository branch of **deep transfer learning fault diagnosis**, including popular few-shot learning algorithms implemented for bearing fault diagnosis. For domain adaptation based methods, see the GitHub repository: [fault-diagnosis-transfer-learning-pytorch](https://github.com/Xiaohan-Chen/fault-diagnosis-transfer-learning-pytorch)
+A public repository branch of **deep transfer learning fault diagnosis**, including popular few-shot learning algorithms implemented for bearing fault diagnosis problems. For domain adaptation based methods, see the GitHub repository: [fault-diagnosis-transfer-learning-pytorch](https://github.com/Xiaohan-Chen/fault-diagnosis-transfer-learning-pytorch)
 
 For further introductions to transfer learning and few-shot learning in bearing fault diagnosis, please read our [paper](https://ieeexplore.ieee.org/document/10042467). And if you find this repository useful and use it in your works, please cite our paper, thank you~:
 ```
@@ -31,6 +31,8 @@ For further introductions to transfer learning and few-shot learning in bearing 
 
 ## :pouch: 4. Dataset
 - CWRU
+
+Data structure please refer to [fault-diagnosis-transfer-learning-pytorch](https://github.com/Xiaohan-Chen/fault-diagnosis-transfer-learning-pytorch)
 
 ## :tv: 5. Usage
 - Siamese Networks 10-way 1-shot experiment
