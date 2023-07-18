@@ -30,8 +30,8 @@ def parse_args():
 
     # dataset information
     parser.add_argument("--datadir", type=str, default="/home/xiaohan/codelab/datasets", help="data directory")
-    parser.add_argument("--source_dataname", type=str, default="CWRU", choices=["CWRU", "PU"], help="choice a dataset")
-    parser.add_argument("--target_dataname", type=str, default="CWRU", choices=["CWRU", "PU"], help="choice a dataset")
+    parser.add_argument("--source_dataname", type=str, default="CWRU", choices=["CWRU"], help="choice a dataset")
+    parser.add_argument("--target_dataname", type=str, default="CWRU", choices=["CWRU"], help="choice a dataset")
     parser.add_argument("--s_load", type=int, default=3, help="source domain working condition")
     parser.add_argument("--t_load", type=int, default=2, help="target domain working condition")
     parser.add_argument("--s_label_set", type=list, default=[0,1,2,3,4,5,6,7,8,9], help="source domain label set")
@@ -44,13 +44,12 @@ def parse_args():
 
 
     # backbone
-    parser.add_argument("--backbone", type=str, default="CNN1D", choices=["ResNet1D", "ResNet2D", "MLPNet", "CNN1D"])
+    parser.add_argument("--backbone", type=str, default="CNN1D", choices=["ResNet1D",  "MLPNet", "CNN1D"])
     # if   backbone in ("ResNet1D", "CNN1D"),  data shape: (batch size, 1, 1024)
     # elif backbone == "ResNet2D",             data shape: (batch size, 3, 32, 32)
     # elif backbone == "MLPNet",               data shape: (batch size, 1024)
     parser.add_argument("--savemodel", type=bool, default=False, help="whether save pre-trained model in the classification task")
     parser.add_argument("--pretrained", type=bool, default=False, help="whether use pre-trained model in transfer learning tasks")
-
 
     # training set
     parser.add_argument("--support", type=int, default=200, help="the number of training samples per class")
@@ -62,7 +61,7 @@ def parse_args():
     parser.add_argument("--num_workers", type=int, default=0, help="the number of dataloader workers")
     parser.add_argument("--batch_size", type=int, default=256)
     parser.add_argument("--max_epoch", type=int, default=400)
-    parser.add_argument("--lr", type=float, default=1e-3, help="learning rate")
+    parser.add_argument("--lr", type=float, default=3e-3, help="learning rate")
     parser.add_argument('--lr_scheduler', type=str, default='stepLR', choices=['step', 'exp', 'stepLR', 'fix'], help='the learning rate schedule')
     parser.add_argument("--optimizer", type=str, default="adam", choices=["adam", "sgd"])
     parser.add_argument('--gamma', type=float, default=0.8, help='learning rate scheduler parameter for step and exp')
@@ -193,6 +192,9 @@ if __name__ == "__main__":
 
     if not os.path.exists("./History"):
         os.makedirs("./History")
+
+    if not os.path.exists("./checkpoints"):
+        os.makedirs("./checkpoints")
 
     args = parse_args()
 

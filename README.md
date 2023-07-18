@@ -1,60 +1,53 @@
-## Few-shot learning for bearing fault diagnosis
-A few shot learning repository for bearing fault diagnosis.
+## Few-shot learning for bearing fault diagnosis pytorch
 
-## :clipboard: To Do
+## :book: 1. Introduction
+A repository branch of **deep transfer learning with fault diagnosis** for few-shot learning. For domain adaptation based methods, see the GitHub repository: [fault-diagnosis-transfer-learning-pytorch](https://github.com/Xiaohan-Chen/fault-diagnosis-transfer-learning-pytorch)
+
+For further introductions to transfer learning and few-shot learning in bearing fault diagnosis, please read our [paper](https://ieeexplore.ieee.org/document/10042467). And if you find this repository useful and use it in your works, please cite our paper, thank you~:
+```
+@ARTICLE{10042467,
+  author={Chen, Xiaohan and Yang, Rui and Xue, Yihao and Huang, Mengjie and Ferrero, Roberto and Wang, Zidong},
+  journal={IEEE Transactions on Instrumentation and Measurement}, 
+  title={Deep Transfer Learning for Bearing Fault Diagnosis: A Systematic Review Since 2016}, 
+  year={2023},
+  volume={72},
+  number={},
+  pages={1-21},
+  doi={10.1109/TIM.2023.3244237}}
+```
+
+## :clipboard: 2. To Do
 - [x] Siamese Networks
 - [x] Prototypical Networks
 - [ ] Matching Networks
 - [ ] Relation Networks
-- [x] MoCo v2
 
-## :package: Packages
+## :package: 3. Requirements
 - Python 3.9.12
 - Numpy 1.23.1
 - torchvision 0.13.0
 - Pytorch 1.12.0
 - tqdm 4.46.0
 
-## :pouch: Datasets
+## :pouch: 4. Dataset
 - CWRU
 
-## :tv: Results
+## :tv: 5. Usage
+- Siamese Networks 10-way 1-shot experiment
+```bash
+python3 Siamese.py --support 300 --backbone "CNN1D" --s_load 3 --t_load 2
+```
 
-**Siamese Networks**
-Training samples: 200 * 10
-Test samples: 100 * 10
-Results: CNN1D 83%
 
-**Prototypical Networks**
+- Prototypical Networks 10-way 10-shot experiment
 
 ```bash
-python3 Prototypical.py --n_train 800 --lr_scheduler 'step' --showstep 5
-python3 moprototypical.py --n_train 800 --m 0.99 --lr_scheduler 'step' --showstep 5 --lr 1e-3 --max_epoch 500
+python3 Prototypical.py --n_train 800 --s_load 3 --t_load 2 --support 10 --query 10
 ```
-|                       | 1     | 2     | 3     | 4     | 5     | avg    |
-|-----------------------|-------|-------|-------|-------|-------|--------|
-| Prototypical          | 81.77 | 85.05 | 83.20 | 83.60 | 81.55 | 83.034 |
-| Momentum ProNet split4| 86.07 | 86.97 | 85.55 | 85.32 | 85.62 | 85.906 |
-| Momentum ProNet split1| 84.77 | 84.50 | 86.85 | 85.45 | 85.60 | 85.434 |
 
-Prototypical: with or without split batch normalization
-n_train = 300 * 10
-1: 80.25, 80.00, 80.15, 79.92, 80.05, 79.17, 78.55, 79.50, 79.10, 79.70 => 79.639
-4: 78.55, 78.42, 78.90, 79.50, 80.02, 78.50, 79.52, 78.82, 77.65, 78.55 => 78.843
+## :flashlight: 6. Results
+![](./History/prototypical_acc.png)
+![](./History/prototypical_loss.png)
 
-Cross machine fine-grained:
-source_dataname: CWRU
-target_dataname: PU
-s_load: 3
-t_load: 2
-s_label_set: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-t_label_set: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-Accuracy: 42.32%
-
-source_dataname: CWRU
-target_dataname: PU
-s_load: 3
-t_load: 2
-s_label_set: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-t_label_set: [0, 1, 2, 3, 4]
-Accuracy: 56.75%
+## :camping: 7. See also
+[GitHub: fault-diagnosis-transfer-learning-pytorch](https://github.com/Xiaohan-Chen/fault-diagnosis-transfer-learning-pytorch)
