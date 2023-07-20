@@ -18,7 +18,7 @@ For further introductions to transfer learning and few-shot learning in bearing 
 
 ## :clipboard: 2. To Do
 - [x] [Siamese Networks (ICML 2015)](https://www.cs.cmu.edu/~rsalakhu/papers/oneshot1.pdf)
-- [x] [Prototypical Networks (NeurIPS)](https://arxiv.org/abs/1703.05175)
+- [x] [Prototypical Networks (NeurIPS 2017)](https://arxiv.org/abs/1703.05175)
 - [ ] Matching Networks
 - [ ] Relation Networks
 
