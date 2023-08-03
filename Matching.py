@@ -1,11 +1,3 @@
-"""
-An implementation of the "Prototypical Networks for Few-shot Learning" in PyTorch, 
-trained and tested on bearing fault diagnosis probelm.
-
-Data: 2022/11/13
-Author: Xiaohan Chen
-Email: cxh_bb@outlook.com
-"""
 import argparse
 import logging
 import warnings
@@ -21,17 +13,18 @@ from tqdm import *
 from PrepareData.CWRU import CWRUloader
 from PrototypicalNets import CNN1D
 from Datasets import PrototypicalData
+from Loss.MatchLoss import matching_loss
 from Sampler import BatchSampler
-from Loss.PrototypicalLoss import prototypical_loss as loss_fn
+from Datasets import PrototypicalData
 
 import Utils.utilis as utils
 
 # ===== Define argments =====
 def parse_args():
-    parser = argparse.ArgumentParser(description='Implementation of Prototypical Neural Networks')
+    parser = argparse.ArgumentParser(description='Implementation of Matching Networks')
 
     # log files
-    parser.add_argument("--log_file", type=str, default="./logs/Prototypical.log", help="log file path")
+    parser.add_argument("--log_file", type=str, default="./logs/Matching.log", help="log file path")
 
     # dataset information
     parser.add_argument("--datadir", type=str, default="/home/xiaohan/codelab/datasets", help="data directory")
@@ -40,31 +33,27 @@ def parse_args():
     parser.add_argument("--s_label_set", type=list, default=[0,1,2,3,4,5,6,7,8,9], help="source domain label set")
     parser.add_argument("--t_label_set", type=list, default=[0,1,2,3,4,5,6,7,8,9], help="target domain label set")
 
-    # pre-processing
+    # pre-processing and model
     parser.add_argument("--fft", type=bool, default=False, help="FFT preprocessing")
     parser.add_argument("--window", type=int, default=128, help="time window, if not augment data, window=1024")
     parser.add_argument("--normalization", type=str, default="0-1", choices=["None", "0-1", "mean-std"], help="normalization option")
-
-
-    # backbone
-    parser.add_argument("--backbone", type=str, default="CNN1D", choices=["ResNet1D", "MLPNet", "CNN1D"])
-    parser.add_argument("--savemodel", type=bool, default=False, help="whether save pre-trained model in the classification task")
-    parser.add_argument("--pretrained", type=bool, default=False, help="whether use pre-trained model in transfer learning tasks")
-
+    parser.add_argument("--backbone", type=str, default="CNN1D", choices=["MLPNet", "CNN1D"])
 
     parser.add_argument("--n_train", type=int, default=500, help="The number of training data per class")
     parser.add_argument("--n_val", type=int, default=200, help="the number of validation data per class")
     parser.add_argument("--n_test", type=int, default=200, help="the number of test data per class")
-    parser.add_argument("--support", type=int, default=10, help="the number of support set per class")
-    parser.add_argument("--query", type=int, default=10, help="the number of query set per class")
+    parser.add_argument("--support", type=int, default=5, help="the number of support set per class")
+    parser.add_argument("--query", type=int, default=5, help="the number of query set per class")
     parser.add_argument("--episodes", type=int, default=80, help="the number of episodes per epoch")
     parser.add_argument("--showstep", type=int, default=50, help="show training history every 'showstep' steps")
+
     # optimization & training
     parser.add_argument("--num_workers", type=int, default=0, help="the number of dataloader workers")
     parser.add_argument("--max_epoch", type=int, default=300)
-    parser.add_argument("--lr", type=float, default=1e-4, help="learning rate")
+    parser.add_argument("--lr", type=float, default=1e-3, help="learning rate")
     parser.add_argument("--optimizer", type=str, default="sgd", choices=["adam", "sgd"])
     parser.add_argument('--gamma', type=float, default=0.8, help='learning rate scheduler parameter for step and exp')
+    parser.add_argument('--steps', type=str, default='60', help='the learning rate decay for step and stepLR')
 
     args = parser.parse_args()
     return args
@@ -75,7 +64,6 @@ def loaddata(args):
     target_data = CWRUloader(args, args.t_load, args.t_label_set, args.n_val+args.n_test)
     val_data = {key:target_data[key][:args.n_val] for key in target_data.keys()}
     test_data = {key:target_data[key][-args.n_test:] for key in target_data.keys()}
-
     # convert the data format from dictionary to tensor
     source_data = PrototypicalData.ProtitypicalData(source_data)
     val_data = PrototypicalData.ProtitypicalData(val_data)
@@ -83,28 +71,28 @@ def loaddata(args):
 
     # source_data.y: all source data labels
     source_sampler = BatchSampler.BatchSampler(source_data.y, args.support, args.query, args.episodes)
-    val_sampler = BatchSampler.BatchSampler(val_data.y, args.support, args.query, args.episodes)
-    test_sampler = BatchSampler.BatchSampler(test_data.y, args.support, args.query, episodes=args.episodes)
+    val_sampler = BatchSampler.BatchSampler(val_data.y, args.support, args.query, episodes=40)
+    test_sampler = BatchSampler.BatchSampler(test_data.y, args.support, args.query, episodes=40)
 
     source_loader = DataLoader(source_data, batch_sampler=source_sampler)
     val_loader = DataLoader(val_data, batch_sampler=val_sampler)
     test_loader = DataLoader(test_data, batch_sampler=test_sampler)
-
+    
     return source_loader, val_loader, test_loader
 
 # ===== Evaluate the model =====
 def Test(args, Net, dataloader):
     Net.eval()
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-    correct_num, error_num = 0, 0
-
+    
+    n_way = len(args.s_label_set)
     data_iter = iter(dataloader)
     acc_his, loss_his = [], []
     for x,y in data_iter:
-        x, y = x.to(device), y.to(device)
+        x,y = x.to(device), y.to(device)
         with torch.no_grad():
             outputs = Net(x)
-            loss, acc = loss_fn(outputs, target=y, n_support=args.support)
+            loss, acc = matching_loss(outputs, target=y, n_support=args.support, n_way=n_way)
             acc_his.append(acc.item())
             loss_his.append(loss.item())
     avg_acc = np.mean(acc_his)
@@ -127,8 +115,8 @@ def Train(args):
     
     # load datasets
     source_loader, val_loader, test_loader = loaddata(args)
-    
-    # load the Prototypical Network
+
+    # load the network
     Net = CNN1D.CNN1D()
 
     # Define optimizer and learning rate decay
@@ -138,19 +126,20 @@ def Train(args):
     Net.to(device)
 
     # train
+    n_way = len(args.s_label_set)
     best_acc = 0.0
     meters = {"train_acc": [], "train_loss": [], "val_acc": [], "val_loss": []}
-    pre_prototypes = torch.randn(10, 64)
     for epoch in range(args.max_epoch):
         Net.train()
-        train_iter = iter(source_loader) # len(train_iter) = episodes
+        train_iter = iter(source_loader)
         acc_his, loss_his = [], []
         for x,y in tqdm(train_iter, ncols = 70, leave=False):
             # move to GPU if available
-            x = x.to(device)  # [class*(num_support + num_querry), sample_length]
-            y = y.to(device)  # [class*(num_support + num_querry)]
-            outputs = Net(x)  # [class*(num_support + num_querry), feature_dim]
-            loss, acc = loss_fn(outputs, target=y, n_support=args.support)
+            x = x.to(device)
+            y = y.to(device)
+            outputs = Net(x)
+            loss, acc = matching_loss(outputs, target=y, n_support=args.support, n_way=n_way)
+
             # clear previous gradients, compute gradients
             optimizer.zero_grad()
             loss.backward()
@@ -163,7 +152,7 @@ def Train(args):
             loss_his.append(loss.item())
 
         train_acc = np.mean(acc_his)
-        train_loss = np.mean(loss_his)
+        train_loss = np.mean(loss.item())
         meters["train_acc"].append(train_acc)
         meters["train_loss"].append(train_loss)
 
@@ -182,9 +171,6 @@ if __name__ == "__main__":
 
     if not os.path.exists("./History"):
         os.makedirs("./History")
-
-    if not os.path.exists("./checkpoints"):
-        os.makedirs("./checkpoints")
 
     args = parse_args()
 

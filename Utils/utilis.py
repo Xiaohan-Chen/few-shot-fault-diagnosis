@@ -42,20 +42,4 @@ def optimizer(args, parameter_list):
     else:
         raise Exception("optimizer not implement")
 
-    # Define the learning rate decay
-    if args.lr_scheduler == 'step':
-        steps = [int(step) for step in args.steps.split(',')]
-        lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, steps, gamma=args.gamma)
-    elif args.lr_scheduler == 'exp':
-        lr_scheduler = optim.lr_scheduler.ExponentialLR(optimizer, args.gamma)
-    elif args.lr_scheduler == 'stepLR':
-        steps = int(args.steps.split(",")[0])
-        lr_scheduler = optim.lr_scheduler.StepLR(optimizer, steps, args.gamma)
-    elif args.lr_scheduler == 'cos':
-        lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, 20, 0)
-    elif args.lr_scheduler == 'fix':
-        lr_scheduler = None
-    else:
-        raise Exception("lr schedule not implement")
-
-    return optimizer, lr_scheduler
+    return optimizer
